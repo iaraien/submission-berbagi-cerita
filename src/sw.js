@@ -89,11 +89,13 @@ self.addEventListener('fetch', (event) => {
 
   // ========== API REQUESTS - Network First ==========
   if (url.origin === new URL(API_URL).origin) {
+  // Untuk GET requests (Ambil Cerita/Login): Gunakan Network First dengan Fallback Cache
+  if (request.method === 'GET') {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          // ✅ ONLY CACHE GET REQUESTS (FIX untuk error baris 108)
-          if (response && response.status === 200 && request.method === 'GET') {
+          // Caching hanya untuk respons 200 OK
+          if (response && response.status === 200) {
             const responseClone = response.clone();
             caches.open(API_CACHE).then((cache) => {
               cache.put(request, responseClone);
@@ -102,31 +104,37 @@ self.addEventListener('fetch', (event) => {
           return response;
         })
         .catch((error) => {
-          console.log('[SW] API fetch failed, trying cache:', error);
-          // Only try to get from cache for GET requests
-          if (request.method === 'GET') {
-            return caches.match(request).then(cachedResponse => {
-              if (cachedResponse) {
-                return cachedResponse;
-              }
-              return new Response(
-                JSON.stringify({ error: true, message: 'Offline - data not cached' }),
-                { headers: { 'Content-Type': 'application/json' } }
-              );
-            });
-          }
-          // For non-GET requests, return error
-          return new Response(
-            JSON.stringify({ error: true, message: 'Cannot perform this action offline' }),
-            { 
-              status: 503,
-              headers: { 'Content-Type': 'application/json' } 
+          console.log('[SW] API GET failed, trying cache:', error);
+          // Fallback ke cache jika gagal/offline
+          return caches.match(request).then((cachedResponse) => {
+            if (cachedResponse) {
+              return cachedResponse;
             }
-          );
+            return new Response(
+              JSON.stringify({ error: true, message: 'Offline - data not cached' }),
+              { headers: { 'Content-Type': 'application/json' } }
+            );
+          });
         })
     );
-    return;
+  } else {
+    // Untuk non-GET requests (POST, PUT, DELETE): Gunakan Network Only
+    // Ini mencegah SW mengintervensi method yang tidak boleh di-cache atau dibaca offline.
+    event.respondWith(
+      fetch(request).catch(() => {
+        // Hanya tampilkan pesan error generik untuk operasi yang gagal saat offline
+        return new Response(
+          JSON.stringify({ error: true, message: 'Cannot perform this action offline' }),
+          {
+            status: 503,
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
+      })
+    );
   }
+  return;
+}
 
   // ========== IMAGE CACHING - Cache First ==========
   if (request.destination === 'image' || /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(url.pathname)) {
