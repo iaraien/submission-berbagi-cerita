@@ -1,0 +1,2 @@
+APP_URL=< https://iaraien.github.io/submission-berbagi-cerita/>
+MAP_SERVICE_API_KEY=<api_key>
